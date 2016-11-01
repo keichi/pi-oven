@@ -54,8 +54,8 @@ function exit_with_version() {
 
 # log loglevel msgbody - Output log
 function log() {
-    local readonly loglevel=$1
-    local readonly msgbody=$2
+    local loglevel=$1
+    local msgbody=$2
 
     case $loglevel in
         INFO)  echo -en "[${C_START}${C_GREEN}${loglevel}${C_RESET}]";;
@@ -68,7 +68,7 @@ function log() {
 
 # check_image image -- Check if image exists
 function check_image() {
-    local readonly image=$1
+    local image=$1
     if ! [[ -s $image ]] || ! [[ -r $image ]]; then
         log "ERROR" "Disk image ${image} is not readable"
         exit 1
@@ -91,9 +91,9 @@ function check_resize_deps() {
 
 # resize_image size image - Resize disk image
 function resize_image() {
-    local readonly size_mb=$1
-    local readonly size_b=$((size_mb * 1000 * 1000))
-    local readonly image=$2
+    local size_mb=$1
+    local size_b=$((size_mb * 1000 * 1000))
+    local image=$2
 
     log "INFO" "Resizing disk image ${image} to ${size_mb}MB"
 
@@ -115,7 +115,7 @@ function is_mounted() {
 
 # mount_image image - Loop mount root partition of disk image
 function mount_image() {
-    local readonly image=$1
+    local image=$1
 
     if is_mounted; then
         return 0
@@ -123,11 +123,12 @@ function mount_image() {
 
     # Create device mappers
     log "INFO" "Creating device mapper for ${image}"
-    local readonly kx_out=$(kpartx -asv "$image" | sed -n ${IMG_ROOT_PART_NUM}p)
-    local readonly regex="^add map ([[:alnum:]]+)"
+    local kx_out
+    kx_out=$(kpartx -asv "$image" | sed -n ${IMG_ROOT_PART_NUM}p)
+    local regex="^add map ([[:alnum:]]+)"
 
     if [[ $kx_out =~ $regex ]]; then
-        local readonly device_mapper=/dev/mapper/${BASH_REMATCH[1]}
+        local device_mapper=/dev/mapper/${BASH_REMATCH[1]}
     else
         log "ERROR" "Could not find device mapper device"
         exit 1
@@ -158,7 +159,7 @@ function mount_image() {
 
 # umount_image image - Unmount disk image
 function umount_image() {
-    local readonly image=$1
+    local image=$1
 
     if ! is_mounted; then
         return 0
@@ -221,7 +222,7 @@ function provision_interactive() {
 
 # provision_script - Run shell script provisioning
 function provision_script() {
-    local readonly script=$1
+    local script=$1
 
     if ! [[ -s $script ]] || ! [[ -r $script ]]; then
         log "ERROR" "Provisioning script ${script} is not readable"
