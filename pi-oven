@@ -1,0 +1,287 @@
+#!/bin/bash
+set -u
+
+# Meta information
+readonly VERSION=0.0.0
+readonly PROGNAME=$(basename $0)
+
+# Some ANSI colors codes
+readonly C_RED='\033[0;31m'
+readonly C_GREEN='\033[0;32m'
+readonly C_YELLOW='\033[0;33m'
+readonly C_START='\033[0;32m'
+readonly C_RESET='\033[m'
+
+# Path to loop mount disk image
+readonly IMG_MOUNT_PATH=/mnt/oven
+# Partition number of root partition
+readonly IMG_ROOT_PART_NUM=2
+# Path to static build of qemu-arm
+if type qemu-arm-static &> /dev/null; then
+    readonly QEMU_SRC=`which qemu-arm-static`
+else
+    readonly QEMU_SRC=$(dirname $(readlink -f $0))/qemu-arm-static
+fi
+# Where to put qemu-arm inside the RasPi image
+readonly QEMU_DST=/usr/bin/qemu-arm-static
+
+# Global variables
+opt_resize=
+opt_disk_image=
+opt_script=
+opt_interactive=false
+
+# exit_with_usage - Print usage and exit
+function exit_with_usage() {
+    cat << EOS >&2
+Usage: ${PROGNAME} [-r, --resize size] [-s, --script path] [-i | --interactive]
+  ${PROGNAME}: Provision and bake RaspberryPi disk image
+
+  Options:
+  -r, --resize         Resize base image before provisioning
+  -s, --script         Shell script for provisioning
+  -i, --interactive    Interactive mode
+  -h, --help           Show usage
+EOS
+    exit 1
+}
+
+# exit_with_version -- Print version info and exit
+function exit_with_version() {
+    echo "$VERSION"
+    exit 0
+}
+
+# log loglevel msgbody - Output log
+function log() {
+    local readonly loglevel=$1
+    local readonly msgbody=$2
+
+    case $loglevel in
+        INFO)  echo -en "[${C_START}${C_GREEN}${loglevel}${C_RESET}]";;
+        WARN)  echo -en "[${C_START}${C_YELLOW}${loglevel}${C_RESET}]";;
+        ERROR) echo -en "[${C_START}${C_RED}${loglevel}${C_RESET}]";;
+        *)     echo -en "[${loglevel}]";;
+    esac
+    echo " ${msgbody}"
+}
+
+# check_image image -- Check if image exists
+function check_image() {
+    local readonly image=$1
+    if ! [[ -s $image ]] || ! [[ -r $image ]]; then
+        log "ERROR" "Disk image ${image} is not readable"
+        exit 1
+    fi
+}
+
+# check_resize_deps - Check programs required for resizing disk images
+function check_resize_deps() {
+    # Make sure /sbin is in PATH
+    export PATH="$PATH:/sbin"
+
+    # Check if commands exist
+    for name in fallocate parted kpartx; do
+        if ! type "$name" &> /dev/null; then
+            log "ERROR" "Could not find ${name}. Please install ${name}."
+            exit 1
+        fi
+    done
+}
+
+# resize_image size image - Resize disk image
+function resize_image() {
+    local readonly size_mb=$1
+    local readonly size_b=$((size_mb * 1000 * 1000))
+    local readonly image=$2
+
+    log "INFO" "Resizing disk image ${image} to ${size_mb}MB"
+
+    log "INFO" "Extending disk image file"
+    fallocate -l "$size_b" "$image"
+
+    log "INFO" "Extending root partition"
+    parted -s "$image" resizepart "$IMG_ROOT_PART_NUM" "$size_mb"
+}
+
+# is_mounted - Check if disk image is mounted
+function is_mounted() {
+    return $(mount | grep "$IMG_MOUNT_PATH" > /dev/null)
+}
+
+# mount_image image - Loop mount root partition of disk image
+function mount_image() {
+    local readonly image=$1
+    # TODO loop device name is hardcoded
+    local readonly device_mapper=/dev/mapper/loop0p$IMG_ROOT_PART_NUM
+
+    if is_mounted; then
+        return 0
+    fi
+
+    # Create device mappers
+    log "INFO" "Creating device mapper for ${image}"
+    kpartx -asv "$image" > /dev/null
+
+    # Resize filesystem if needed
+    e2fsck -fy $device_mapper &> /dev/null
+    resize2fs "$device_mapper" &> /dev/null
+
+    # Make sure mount point exists
+    if ! [[ -d $IMG_MOUNT_PATH  ]]; then
+        mkdir -p "$IMG_MOUNT_PATH"
+    fi
+
+    # Loop mount partition
+    log "INFO" "Mouting ${device_mapper} to ${IMG_MOUNT_PATH}"
+    mount "$device_mapper" "$IMG_MOUNT_PATH"
+
+    # Mount devfs, sysfs and procfs
+    log "INFO" "Mouting devfs, sysfs and procfs"
+    mount --bind /dev "${IMG_MOUNT_PATH}/dev"
+    mount --bind /sys "${IMG_MOUNT_PATH}/sys"
+    mount -t proc none "${IMG_MOUNT_PATH}/proc"
+}
+
+# umount_image image - Unmount disk image
+function umount_image() {
+    local readonly image=$1
+
+    if ! is_mounted; then
+        return 0
+    fi
+
+    # Unmount devfs, sysfs and procfs
+    log "INFO" "Unmouting devfs, sysfs and procfs"
+    umount "${IMG_MOUNT_PATH}/dev"
+    umount "${IMG_MOUNT_PATH}/sys"
+    umount "${IMG_MOUNT_PATH}/proc"
+
+    log "INFO" "Unmounting ${IMG_MOUNT_PATH}"
+    umount "$IMG_MOUNT_PATH"
+
+    log "INFO" "Deleting device mapper for ${image}"
+    kpartx -dv "$image" > /dev/null
+}
+
+# check_privileges - Check if we have root privilege
+function check_privileges() {
+    if ! [ "$(whoami)" == "root" ]; then
+        log "ERROR" "${PROGNAME} requires root privilege"
+        exit 1
+    fi
+}
+
+# prepare_chroot - Preparation before running chroot
+function prepare_chroot() {
+    local arm_binfmt=':qemu-arm:M::\x7fELF\x01\x01\x01\x00\x00\x00\x00\x00'
+    arm_binfmt+='\x00\x00\x00\x00\x02\x00\x28\x00:\xff\xff\xff\xff\xff\xff'
+    arm_binfmt+='\xff\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff:'
+    arm_binfmt+='/usr/bin/qemu-arm-static:'
+
+    cp "$QEMU_SRC" "${IMG_MOUNT_PATH}/${QEMU_DST}"
+    if ! ls /proc/sys/fs/binfmt_misc/ | grep -w qemu-arm > /dev/null ; then
+        log "INFO" "Installing binfmt configuration for ARM binaries"
+        echo -e "$arm_binfmt" > /proc/sys/fs/binfmt_misc/register
+    fi
+
+    log "INFO" "Using qemu-arm-static in ${QEMU_SRC}"
+
+    chroot $IMG_MOUNT_PATH /bin/sed -i -e 's/^#*/#/' /etc/ld.so.preload
+}
+
+# cleanup_chroot - Cleanup after running chroot
+function cleanup_chroot() {
+    chroot $IMG_MOUNT_PATH /bin/sed -i -e 's/^#*//' /etc/ld.so.preload
+    rm -f "${IMG_MOUNT_PATH}/${QEMU_DST}"
+}
+
+# provision_interactive - Run interactive provisioning
+function provision_interactive() {
+    prepare_chroot
+
+    log "INFO" "Interactive provisioning: launching interactive shell"
+    chroot $IMG_MOUNT_PATH /bin/bash
+
+    cleanup_chroot
+}
+
+# provision_script - Run shell script provisioning
+function provision_script() {
+    local readonly script=$1
+
+    if ! [[ -s $script ]] || ! [[ -r $script ]]; then
+        log "ERROR" "Provisioning script ${script} is not readable"
+        exit 1
+    fi
+
+    prepare_chroot
+    cp "$script" "${IMG_MOUNT_PATH}/usr/bin/provision.sh"
+
+    log "INFO" "Script provisioning: executing provisioning script ${script}"
+    if chroot $IMG_MOUNT_PATH /bin/bash -ex /usr/bin/provision.sh; then
+        log "INFO" "Successfully executed provisioning script"
+    else
+        log "ERROR" "Provisioning script returned error"
+    fi
+
+    rm -f "${IMG_MOUNT_PATH}/usr/bin/provision.sh"
+    cleanup_chroot
+}
+
+# parse_args *args - Parse command line arguments
+function parse_args() {
+    options=$(getopt -o r:s:ih --long resize:,script:,interactive,version,help -- "$@")
+    if [[ $? != 0 ]]; then
+        exit_with_usage
+    fi
+    eval set -- "$options"
+
+    while true; do
+        case "$1" in
+            -r | --resize)      opt_resize=$2; shift 2;;
+            -s | --script)      opt_script=$(realpath $2); shift 2;;
+            -i | --interactive) opt_interactive=true; shift;;
+            -h | --help)        exit_with_usage; break;;
+            --version)          exit_with_version; break;;
+            --)                 opt_disk_image=$(realpath $2); shift; break;;
+            *)                  exit_with_usage; break;;
+        esac
+    done
+
+    if ! $opt_interactive && [[ $opt_script == ""  ]]; then
+        log "ERROR" "Either --script or --interactive must be set"
+        exit 1
+    fi
+}
+
+# main *args - Main function
+function main() {
+    parse_args $@
+
+    trap "umount_image ${opt_disk_image}" 0
+
+    check_privileges
+    check_image "$opt_disk_image"
+
+    if [[ $opt_resize != "" ]]; then
+        check_resize_deps
+        resize_image "$opt_resize" "$opt_disk_image"
+    fi
+
+    mount_image "$opt_disk_image"
+
+    if [[ $opt_script != "" ]]; then
+        provision_script $opt_script
+    fi
+
+    if $opt_interactive; then
+        provision_interactive
+    fi
+
+    umount_image "$opt_disk_image"
+
+    exit 0
+}
+
+main $@
