@@ -3,7 +3,7 @@ set -u
 
 # Meta information
 readonly VERSION=0.0.0
-readonly PROGNAME=$(basename $0)
+readonly PROGNAME=$(basename "$0")
 
 # Some ANSI color codes
 readonly C_RED='\033[0;31m'
@@ -18,9 +18,9 @@ readonly IMG_MOUNT_PATH=/mnt/oven
 readonly IMG_ROOT_PART_NUM=2
 # Path to static build of qemu-arm
 if type qemu-arm-static &> /dev/null; then
-    readonly QEMU_SRC=`which qemu-arm-static`
+    readonly QEMU_SRC=$(which qemu-arm-static)
 else
-    readonly QEMU_SRC=$(dirname $(readlink -f $0))/qemu-arm-static
+    readonly QEMU_SRC=$(dirname "$(readlink -f "$0")")/qemu-arm-static
 fi
 # Where to put qemu-arm inside the RasPi image
 readonly QEMU_DST=/usr/bin/qemu-arm-static
@@ -106,7 +106,7 @@ function resize_image() {
 
 # is_mounted - Check if disk image is mounted
 function is_mounted() {
-    return $(mount | grep "$IMG_MOUNT_PATH" > /dev/null)
+    return "$(mount | grep "$IMG_MOUNT_PATH" > /dev/null)"
 }
 
 # mount_image image - Loop mount root partition of disk image
@@ -180,7 +180,7 @@ function prepare_chroot() {
     arm_binfmt+='/usr/bin/qemu-arm-static:'
 
     cp "$QEMU_SRC" "${IMG_MOUNT_PATH}/${QEMU_DST}"
-    if ! ls /proc/sys/fs/binfmt_misc/ | grep -w qemu-arm > /dev/null ; then
+    if ! ls /proc/sys/fs/binfmt_misc/qemu-arm > /dev/null ; then
         log "INFO" "Installing binfmt configuration for ARM binaries"
         echo -e "$arm_binfmt" > /proc/sys/fs/binfmt_misc/register
     fi
@@ -240,11 +240,11 @@ function parse_args() {
     while true; do
         case "$1" in
             -r | --resize)      opt_resize=$2; shift 2;;
-            -s | --script)      opt_script=$(realpath $2); shift 2;;
+            -s | --script)      opt_script=$(realpath "$2"); shift 2;;
             -i | --interactive) opt_interactive=true; shift;;
             -h | --help)        exit_with_usage; break;;
             --version)          exit_with_version; break;;
-            --)                 opt_disk_image=$(realpath $2); shift; break;;
+            --)                 opt_disk_image=$(realpath "$2"); shift; break;;
             *)                  exit_with_usage; break;;
         esac
     done
@@ -257,9 +257,9 @@ function parse_args() {
 
 # main *args - Main function
 function main() {
-    parse_args $@
+    parse_args "$@"
 
-    trap "umount_image ${opt_disk_image}" 0
+    trap 'umount_image ${opt_disk_image}' 0
 
     check_privileges
     check_image "$opt_disk_image"
@@ -272,7 +272,7 @@ function main() {
     mount_image "$opt_disk_image"
 
     if [[ $opt_script != "" ]]; then
-        provision_script $opt_script
+        provision_script "$opt_script"
     fi
 
     if $opt_interactive; then
@@ -284,4 +284,4 @@ function main() {
     exit 0
 }
 
-main $@
+main "$@"
