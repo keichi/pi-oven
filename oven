@@ -106,14 +106,16 @@ function resize_image() {
 
 # is_mounted - Check if disk image is mounted
 function is_mounted() {
-    return "$(mount | grep "$IMG_MOUNT_PATH" > /dev/null)"
+    if mount | grep "$IMG_MOUNT_PATH" > /dev/null; then
+        return 0
+    else
+        return 1
+    fi
 }
 
 # mount_image image - Loop mount root partition of disk image
 function mount_image() {
     local readonly image=$1
-    # TODO loop device name is hardcoded
-    local readonly device_mapper=/dev/mapper/loop0p$IMG_ROOT_PART_NUM
 
     if is_mounted; then
         return 0
@@ -121,10 +123,18 @@ function mount_image() {
 
     # Create device mappers
     log "INFO" "Creating device mapper for ${image}"
-    kpartx -asv "$image" > /dev/null
+    local readonly kx_out=$(kpartx -asv "$image" | sed -n ${IMG_ROOT_PART_NUM}p)
+    local readonly regex="^add map ([[:alnum:]]+)"
+
+    if [[ $kx_out =~ $regex ]]; then
+        local readonly device_mapper=/dev/mapper/${BASH_REMATCH[1]}
+    else
+        log "ERROR" "Could not find device mapper device"
+        exit 1
+    fi
 
     # Resize filesystem if needed
-    e2fsck -fy $device_mapper &> /dev/null
+    e2fsck -fy "$device_mapper" &> /dev/null
     resize2fs "$device_mapper" &> /dev/null
 
     # Make sure mount point exists
@@ -134,7 +144,10 @@ function mount_image() {
 
     # Loop mount partition
     log "INFO" "Mouting ${device_mapper} to ${IMG_MOUNT_PATH}"
-    mount "$device_mapper" "$IMG_MOUNT_PATH"
+    if ! mount "$device_mapper" "$IMG_MOUNT_PATH" &> /dev/null; then
+        log "ERROR" "Failed to mount ${device_mapper}"
+        exit 1
+    fi
 
     # Mount devfs, sysfs and procfs
     log "INFO" "Mouting devfs, sysfs and procfs"
