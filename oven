@@ -5,7 +5,7 @@ set -u
 readonly VERSION=0.0.0
 readonly PROGNAME=$(basename $0)
 
-# Some ANSI colors codes
+# Some ANSI color codes
 readonly C_RED='\033[0;31m'
 readonly C_GREEN='\033[0;32m'
 readonly C_YELLOW='\033[0;33m'
