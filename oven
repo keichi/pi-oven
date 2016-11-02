@@ -16,12 +16,6 @@ readonly C_RESET='\033[m'
 readonly IMG_MOUNT_PATH=/mnt/oven
 # Partition number of root partition
 readonly IMG_ROOT_PART_NUM=2
-# Path to static build of qemu-arm
-if type qemu-arm-static &> /dev/null; then
-    readonly QEMU_SRC=$(which qemu-arm-static)
-else
-    readonly QEMU_SRC=$(dirname "$(readlink -f "$0")")/qemu-arm-static
-fi
 # Where to put qemu-arm inside the RasPi image
 readonly QEMU_DST=/usr/bin/qemu-arm-static
 
@@ -75,18 +69,33 @@ function check_image() {
     fi
 }
 
-# check_resize_deps - Check programs required for resizing disk images
-function check_resize_deps() {
+# check_deps - Check if dependent tools exist
+function check_deps() {
     # Make sure /sbin is in PATH
     export PATH="$PATH:/sbin"
+    # Dependencies are missing
+    local failed=false
 
     # Check if commands exist
     for name in fallocate parted kpartx; do
         if ! type "$name" &> /dev/null; then
-            log "ERROR" "Could not find ${name}. Please install ${name}."
-            exit 1
+            log "ERROR" "${name} is missing"
+            failed=true
         fi
     done
+
+    # Path to static build of qemu-arm
+    if type qemu-arm-static &> /dev/null; then
+        readonly QEMU_SRC=$(which qemu-arm-static)
+    else
+        log "ERROR" "qemu-arm-static is missing"
+        failed=true
+    fi
+
+    if $failed; then
+        log "ERROR" "Cannot continue; please install dependencies first"
+        exit 1
+    fi
 }
 
 # resize_image size image - Resize disk image
@@ -276,10 +285,10 @@ function main() {
     trap 'umount_image ${opt_disk_image}' 0
 
     check_privileges
+    check_deps
     check_image "$opt_disk_image"
 
     if [[ $opt_resize != "" ]]; then
-        check_resize_deps
         resize_image "$opt_resize" "$opt_disk_image"
     fi
 
