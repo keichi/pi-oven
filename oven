@@ -113,7 +113,8 @@ function resize_image() {
         log "WARN" "Falling back to rm and mkpart"
 
         local regexp="s/^\s*$IMG_ROOT_PART_NUM\s\+\([0-9]\+\).*/\1/p"
-        local offset=$(parted -s "$image" unit s p | sed -n $regexp)
+        local offset
+        offset=$(parted -s "$image" unit s p | sed -n "$regexp")
         parted -s "$image" rm "$IMG_ROOT_PART_NUM" mkpart primary ext4 "${offset}s" 100%
     else
         parted -s "$image" resizepart "$IMG_ROOT_PART_NUM" "$size_mb"
@@ -141,7 +142,7 @@ function mount_image() {
     log "INFO" "Creating device mapper for ${image}"
     local kx_out
     # Make sure device mappers are deleted
-    kpartx -dsv $image > /dev/null
+    kpartx -dsv "$image" > /dev/null
     kx_out=$(kpartx -asv "$image" | sed -n ${IMG_ROOT_PART_NUM}p)
 
     # Extract device mapper path
