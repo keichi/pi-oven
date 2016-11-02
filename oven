@@ -28,7 +28,7 @@ opt_interactive=false
 # exit_with_usage - Print usage and exit
 function exit_with_usage() {
     cat << EOS >&2
-Usage: ${PROGNAME} [-r, --resize size] [-s, --script path] [-i | --interactive]
+Usage: ${PROGNAME} [options] src [dst]
   ${PROGNAME}: Provision and bake RaspberryPi disk image
 
   Options:
@@ -102,7 +102,7 @@ function resize_image() {
     local size_b=$((size_mb * 1000 * 1000))
     local image=$2
 
-    log "INFO" "Resizing disk image ${image} to ${size_mb}MB"
+    log "INFO" "Resizing disk image file ${image} to ${size_mb}MB"
 
     log "INFO" "Extending disk image file"
     fallocate -l "$size_b" "$image"
@@ -278,14 +278,24 @@ function parse_args() {
             -i | --interactive) opt_interactive=true; shift;;
             -h | --help)        exit_with_usage; break;;
             --version)          exit_with_version; break;;
-            --)                 opt_disk_image=$(realpath "$2"); shift; break;;
+            --)                 shift; break;;
             *)                  exit_with_usage; break;;
         esac
     done
 
     if ! $opt_interactive && [[ $opt_script == ""  ]]; then
         log "ERROR" "Either --script or --interactive must be set"
-        exit 1
+        exit_with_usage
+    fi
+
+    if [[ $# -eq 1 ]]; then
+        opt_disk_image=$(realpath "$1");
+    elif [[ $# -eq 2 ]]; then
+        log "INFO" "Copying disk image file $1 to $2"
+        cp "$1" "$2"
+        opt_disk_image=$(realpath "$2");
+    else
+        exit_with_usage
     fi
 }
 
