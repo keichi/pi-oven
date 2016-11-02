@@ -140,13 +140,16 @@ function mount_image() {
     # Create device mappers
     log "INFO" "Creating device mapper for ${image}"
     local kx_out
+    # Make sure device mappers are deleted
+    kpartx -dsv $image > /dev/null
     kx_out=$(kpartx -asv "$image" | sed -n ${IMG_ROOT_PART_NUM}p)
-    local regex="^add map ([[:alnum:]]+)"
 
+    # Extract device mapper path
+    local regex="^add map ([[:alnum:]]+)"
     if [[ $kx_out =~ $regex ]]; then
         local device_mapper=/dev/mapper/${BASH_REMATCH[1]}
     else
-        log "ERROR" "Could not find device mapper device"
+        log "ERROR" "Could not find device mapper"
         exit 1
     fi
 
@@ -191,7 +194,7 @@ function umount_image() {
     umount "$IMG_MOUNT_PATH"
 
     log "INFO" "Deleting device mapper for ${image}"
-    kpartx -dv "$image" > /dev/null
+    kpartx -dsv "$image" > /dev/null
 }
 
 # check_privileges - Check if we have root privilege
