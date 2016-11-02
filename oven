@@ -71,9 +71,6 @@ function check_image() {
 
 # check_deps - Check if dependent tools exist
 function check_deps() {
-    # Make sure /sbin is in PATH
-    export PATH="$PATH:/sbin"
-    # Dependencies are missing
     local failed=false
 
     # Check if commands exist
@@ -92,6 +89,7 @@ function check_deps() {
         failed=true
     fi
 
+    # Some dependencies are missing
     if $failed; then
         log "ERROR" "Cannot continue; please install dependencies first"
         exit 1
