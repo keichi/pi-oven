@@ -108,7 +108,16 @@ function resize_image() {
     fallocate -l "$size_b" "$image"
 
     log "INFO" "Extending root partition"
-    parted -s "$image" resizepart "$IMG_ROOT_PART_NUM" "$size_mb"
+    if ! parted -h | grep resizepart; then
+        log "WARN" "parted does not support resizepart subcommand"
+        log "WARN" "Falling back to rm and mkpart"
+
+        local regexp="s/^\s*$IMG_ROOT_PART_NUM\s\+\([0-9]\+\).*/\1/p"
+        local offset=$(parted -s "$image" unit s p | sed -n $regexp)
+        parted -s "$image" rm "$IMG_ROOT_PART_NUM" mkpart primary ext4 "${offset}s" 100%
+    else
+        parted -s "$image" resizepart "$IMG_ROOT_PART_NUM" "$size_mb"
+    fi
 }
 
 # is_mounted - Check if disk image is mounted
