@@ -33,9 +33,6 @@ readonly C_YELLOW='\033[0;33m'
 readonly C_START='\033[0;32m'
 readonly C_RESET='\033[m'
 
-# Partition number of the root partition
-readonly IMG_ROOT_PART_NUM=2
-
 # Global variables
 opt_resize=
 opt_disk_image=
@@ -46,6 +43,8 @@ opt_qemu_src=
 readonly opt_qemu_dst=/usr/bin/qemu-arm-static
 # Path to loop mount the disk image
 readonly opt_mount_point=/mnt/oven
+# Partition number of the root partition
+opt_root_part_num=2
 
 # exit_with_usage - Print usage and exit
 function exit_with_usage() {
@@ -54,10 +53,11 @@ Usage: ${PROGNAME} [options] src [dst]
   ${PROGNAME}: Provision and bake RaspberryPi disk image
 
   Options:
-  -r, --resize         Resize base image before provisioning
-  -s, --script         Shell script for provisioning
+  -r, --resize SIZE    Resize base image before provisioning
+  -s, --script PATH    Shell script for provisioning
   -i, --interactive    Interactive mode
-  --qemu               Path to qemu-arm-static
+  --partnum [1-4]      Partition number of the root partition
+  --qemu PATH          Path to qemu-arm-static
   --version            Print version information
   -h, --help           Show usage
 EOS
@@ -143,12 +143,12 @@ function resize_image() {
         log "WARN" "parted does not support resizepart subcommand"
         log "WARN" "Falling back to rm and mkpart"
 
-        local regexp="s/^\s*$IMG_ROOT_PART_NUM\s\+\([0-9]\+\).*/\1/p"
+        local regexp="s/^\s*$opt_root_part_num\s\+\([0-9]\+\).*/\1/p"
         local offset
         offset=$(parted -s "$image" unit s p | sed -n "$regexp")
-        parted -s "$image" rm "$IMG_ROOT_PART_NUM" mkpart primary ext4 "${offset}s" 100%
+        parted -s "$image" rm "$opt_root_part_num" mkpart primary ext4 "${offset}s" 100%
     else
-        parted -s "$image" resizepart "$IMG_ROOT_PART_NUM" "$size_mb"
+        parted -s "$image" resizepart "$opt_root_part_num" "$size_mb"
     fi
 }
 
@@ -174,7 +174,7 @@ function mount_image() {
     local kx_out
     # Make sure device mappers are deleted
     kpartx -dsv "$image" > /dev/null
-    kx_out=$(kpartx -asv "$image" | sed -n ${IMG_ROOT_PART_NUM}p)
+    kx_out=$(kpartx -asv "$image" | sed -n ${opt_root_part_num}p)
 
     # Extract device mapper path
     local regex="^add map ([[:alnum:]]+)"
@@ -296,7 +296,7 @@ function provision_script() {
 
 # parse_args *args - Parse command line arguments
 function parse_args() {
-    options=$(getopt -o r:s:ih --long resize:,script:,interactive,qemu:,version,help -- "$@")
+    options=$(getopt -o r:s:ih --long resize:,script:,interactive,partnum:,qemu:,version,help -- "$@")
     if [[ $? != 0 ]]; then
         exit_with_usage
     fi
@@ -307,6 +307,7 @@ function parse_args() {
             -r | --resize)      readonly opt_resize=$2; shift 2;;
             -s | --script)      readonly opt_script=$(realpath "$2"); shift 2;;
             -i | --interactive) readonly opt_interactive=true; shift;;
+            --partnum)          readonly opt_root_part_num=$2; shift 2;;
             --qemu)             readonly opt_qemu_src=$2; shift 2;;
             -h | --help)        exit_with_usage; break;;
             --version)          exit_with_version; break;;
@@ -317,6 +318,11 @@ function parse_args() {
 
     if ! $opt_interactive && [[ $opt_script == ""  ]]; then
         log "ERROR" "Either --script or --interactive must be set"
+        exit_with_usage
+    fi
+
+    if (( opt_root_part_num < 1 )) || (( opt_root_part_num > 4 )); then
+        log "ERROR" "--partnum must be a number between 1 to 4"
         exit_with_usage
     fi
 
