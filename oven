@@ -33,8 +33,6 @@ readonly C_YELLOW='\033[0;33m'
 readonly C_START='\033[0;32m'
 readonly C_RESET='\033[m'
 
-# Path to loop mount the disk image
-readonly IMG_MOUNT_PATH=/mnt/oven
 # Partition number of the root partition
 readonly IMG_ROOT_PART_NUM=2
 
@@ -45,7 +43,9 @@ opt_script=
 opt_interactive=false
 opt_qemu_src=
 # Where to put qemu-arm inside the RasPi image
-opt_qemu_dst=/usr/bin/qemu-arm-static
+readonly opt_qemu_dst=/usr/bin/qemu-arm-static
+# Path to loop mount the disk image
+readonly opt_mount_point=/mnt/oven
 
 # exit_with_usage - Print usage and exit
 function exit_with_usage() {
@@ -154,7 +154,7 @@ function resize_image() {
 
 # is_mounted - Check if disk image is mounted
 function is_mounted() {
-    if mount | grep "$IMG_MOUNT_PATH" > /dev/null; then
+    if mount | grep "$opt_mount_point" > /dev/null; then
         return 0
     else
         return 1
@@ -190,22 +190,22 @@ function mount_image() {
     resize2fs "$device_mapper" &> /dev/null
 
     # Make sure mount point exists
-    if ! [[ -d $IMG_MOUNT_PATH  ]]; then
-        mkdir -p "$IMG_MOUNT_PATH"
+    if ! [[ -d $opt_mount_point  ]]; then
+        mkdir -p "$opt_mount_point"
     fi
 
     # Loop mount partition
-    log "INFO" "Mouting ${device_mapper} to ${IMG_MOUNT_PATH}"
-    if ! mount "$device_mapper" "$IMG_MOUNT_PATH" &> /dev/null; then
+    log "INFO" "Mouting ${device_mapper} to ${opt_mount_point}"
+    if ! mount "$device_mapper" "$opt_mount_point" &> /dev/null; then
         log "ERROR" "Failed to mount ${device_mapper}"
         exit 1
     fi
 
     # Mount devfs, sysfs and procfs
     log "INFO" "Mouting devfs, sysfs and procfs"
-    mount --bind /dev "${IMG_MOUNT_PATH}/dev"
-    mount --bind /sys "${IMG_MOUNT_PATH}/sys"
-    mount -t proc none "${IMG_MOUNT_PATH}/proc"
+    mount --bind /dev "${opt_mount_point}/dev"
+    mount --bind /sys "${opt_mount_point}/sys"
+    mount -t proc none "${opt_mount_point}/proc"
 }
 
 # umount_image image - Unmount disk image
@@ -218,12 +218,12 @@ function umount_image() {
 
     # Unmount devfs, sysfs and procfs
     log "INFO" "Unmouting devfs, sysfs and procfs"
-    umount "${IMG_MOUNT_PATH}/dev"
-    umount "${IMG_MOUNT_PATH}/sys"
-    umount "${IMG_MOUNT_PATH}/proc"
+    umount "${opt_mount_point}/dev"
+    umount "${opt_mount_point}/sys"
+    umount "${opt_mount_point}/proc"
 
-    log "INFO" "Unmounting ${IMG_MOUNT_PATH}"
-    umount "$IMG_MOUNT_PATH"
+    log "INFO" "Unmounting ${opt_mount_point}"
+    umount "$opt_mount_point"
 
     log "INFO" "Deleting device mapper for ${image}"
     kpartx -dsv "$image" > /dev/null
@@ -244,7 +244,7 @@ function prepare_chroot() {
     arm_binfmt+='\xff\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff:'
     arm_binfmt+='/usr/bin/qemu-arm-static:'
 
-    cp "$opt_qemu_src" "${IMG_MOUNT_PATH}/${opt_qemu_dst}"
+    cp "$opt_qemu_src" "${opt_mount_point}/${opt_qemu_dst}"
     if ! ls /proc/sys/fs/binfmt_misc/qemu-arm > /dev/null ; then
         log "INFO" "Installing binfmt configuration for ARM binaries"
         echo -e "$arm_binfmt" > /proc/sys/fs/binfmt_misc/register
@@ -252,13 +252,13 @@ function prepare_chroot() {
 
     log "INFO" "Using qemu-arm-static in ${opt_qemu_src}"
 
-    chroot $IMG_MOUNT_PATH /bin/sed -i -e 's/^#*/#/' /etc/ld.so.preload
+    chroot $opt_mount_point /bin/sed -i -e 's/^#*/#/' /etc/ld.so.preload
 }
 
 # cleanup_chroot - Cleanup after running chroot
 function cleanup_chroot() {
-    chroot $IMG_MOUNT_PATH /bin/sed -i -e 's/^#*//' /etc/ld.so.preload
-    rm -f "${IMG_MOUNT_PATH}/${opt_qemu_dst}"
+    chroot $opt_mount_point /bin/sed -i -e 's/^#*//' /etc/ld.so.preload
+    rm -f "${opt_mount_point}/${opt_qemu_dst}"
 }
 
 # provision_interactive - Run interactive provisioning
@@ -266,7 +266,7 @@ function provision_interactive() {
     prepare_chroot
 
     log "INFO" "Interactive provisioning: launching interactive shell"
-    chroot $IMG_MOUNT_PATH /bin/bash
+    chroot $opt_mount_point /bin/bash
 
     cleanup_chroot
 }
@@ -281,16 +281,16 @@ function provision_script() {
     fi
 
     prepare_chroot
-    cp "$script" "${IMG_MOUNT_PATH}/usr/bin/provision.sh"
+    cp "$script" "${opt_mount_point}/usr/bin/provision.sh"
 
     log "INFO" "Script provisioning: executing provisioning script ${script}"
-    if chroot $IMG_MOUNT_PATH /bin/bash -ex /usr/bin/provision.sh; then
+    if chroot $opt_mount_point /bin/bash -ex /usr/bin/provision.sh; then
         log "INFO" "Successfully executed provisioning script"
     else
         log "ERROR" "Provisioning script returned error"
     fi
 
-    rm -f "${IMG_MOUNT_PATH}/usr/bin/provision.sh"
+    rm -f "${opt_mount_point}/usr/bin/provision.sh"
     cleanup_chroot
 }
 
