@@ -15,15 +15,13 @@ Automated provisioning of RaspberryPi disk images
 
 ```
 $ curl -O https://raw.githubusercontent.com/keichi/pi-oven/master/oven
-$ install oven /usr/bin
+$ sudo install oven /usr/bin
 ```
 
 ### Install QEMU
 
 Please note that pi-oven requires a statically linked QEMU with user mode
-emulation for ARM binaries.
-
-You can install it with your package manager:
+emulation for ARM binaries. If it's available from your package manager:
 
 ```
 $ dnf install qemu-user-static
@@ -33,7 +31,7 @@ Alternatively, you can download it from this repository.
 
 ```
 $ curl -O https://raw.githubusercontent.com/keichi/pi-oven/master/oven
-$ install qemu-arm-static /usr/bin
+$ sudo install qemu-arm-static /usr/bin
 ```
 
 ## Usage
@@ -54,7 +52,10 @@ Available options:
 - -r, --resize [size in MB]: Resize base image before provisioning
 - -s, --script [path to shell script]: Shell script for provisioning
 - -i, --interactive: Interactive mode
-- -h, --help : Show usage
+- --partnum [1-4]: Partition number of the root partition
+- --qemu [path to qemu]: Path to qemu-arm-static
+- --version: Print version information
+- -h, --help: Show usage
 
 ### Examples
 
