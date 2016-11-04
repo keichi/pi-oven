@@ -2,7 +2,7 @@
 
 [![Code Climate](https://codeclimate.com/github/keichi/pi-oven/badges/gpa.svg)](https://codeclimate.com/github/keichi/pi-oven)
 
-Automated provisioning of RaspberryPi disk images
+Automated provisioning of RaspberryPi disk images on x86_64
 
 ## Prerequisites
 
@@ -30,8 +30,8 @@ $ dnf install qemu-user-static
 Alternatively, you can download it from this repository.
 
 ```
-$ curl -O https://raw.githubusercontent.com/keichi/pi-oven/master/oven
-$ sudo install qemu-arm-static /usr/bin
+$ curl -O https://raw.githubusercontent.com/keichi/pi-oven/master/qemu-arm-static
+$ install qemu-arm-static /usr/bin
 ```
 
 ## Usage
