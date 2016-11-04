@@ -33,18 +33,19 @@ readonly C_YELLOW='\033[0;33m'
 readonly C_START='\033[0;32m'
 readonly C_RESET='\033[m'
 
-# Path to loop mount disk image
+# Path to loop mount the disk image
 readonly IMG_MOUNT_PATH=/mnt/oven
-# Partition number of root partition
+# Partition number of the root partition
 readonly IMG_ROOT_PART_NUM=2
-# Where to put qemu-arm inside the RasPi image
-readonly QEMU_DST=/usr/bin/qemu-arm-static
 
 # Global variables
 opt_resize=
 opt_disk_image=
 opt_script=
 opt_interactive=false
+opt_qemu_src=
+# Where to put qemu-arm inside the RasPi image
+opt_qemu_dst=/usr/bin/qemu-arm-static
 
 # exit_with_usage - Print usage and exit
 function exit_with_usage() {
@@ -56,6 +57,8 @@ Usage: ${PROGNAME} [options] src [dst]
   -r, --resize         Resize base image before provisioning
   -s, --script         Shell script for provisioning
   -i, --interactive    Interactive mode
+  --qemu               Path to qemu-arm-static
+  --version            Print version information
   -h, --help           Show usage
 EOS
     exit 1
@@ -94,7 +97,7 @@ function check_image() {
 function check_deps() {
     local failed=false
 
-    # Check if commands exist
+    # Check if fallocate, parted and kpartx exist in PATH
     for name in fallocate parted kpartx; do
         if ! type "$name" &> /dev/null; then
             log "ERROR" "${name} is missing"
@@ -103,11 +106,18 @@ function check_deps() {
     done
 
     # Path to static build of qemu-arm
-    if type qemu-arm-static &> /dev/null; then
-        readonly QEMU_SRC=$(which qemu-arm-static)
+    if [[ $opt_qemu_src != ""  ]]; then
+        if ! [[ -x $opt_qemu_src ]]; then
+            log "ERROR" "${opt_qemu_src} is not executable"
+            failed=true
+        fi
     else
-        log "ERROR" "qemu-arm-static is missing"
-        failed=true
+        if type qemu-arm-static &> /dev/null; then
+            readonly opt_qemu_src=$(which qemu-arm-static)
+        else
+            log "ERROR" "qemu-arm-static is missing"
+            failed=true
+        fi
     fi
 
     # Some dependencies are missing
@@ -234,13 +244,13 @@ function prepare_chroot() {
     arm_binfmt+='\xff\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff:'
     arm_binfmt+='/usr/bin/qemu-arm-static:'
 
-    cp "$QEMU_SRC" "${IMG_MOUNT_PATH}/${QEMU_DST}"
+    cp "$opt_qemu_src" "${IMG_MOUNT_PATH}/${opt_qemu_dst}"
     if ! ls /proc/sys/fs/binfmt_misc/qemu-arm > /dev/null ; then
         log "INFO" "Installing binfmt configuration for ARM binaries"
         echo -e "$arm_binfmt" > /proc/sys/fs/binfmt_misc/register
     fi
 
-    log "INFO" "Using qemu-arm-static in ${QEMU_SRC}"
+    log "INFO" "Using qemu-arm-static in ${opt_qemu_src}"
 
     chroot $IMG_MOUNT_PATH /bin/sed -i -e 's/^#*/#/' /etc/ld.so.preload
 }
@@ -248,7 +258,7 @@ function prepare_chroot() {
 # cleanup_chroot - Cleanup after running chroot
 function cleanup_chroot() {
     chroot $IMG_MOUNT_PATH /bin/sed -i -e 's/^#*//' /etc/ld.so.preload
-    rm -f "${IMG_MOUNT_PATH}/${QEMU_DST}"
+    rm -f "${IMG_MOUNT_PATH}/${opt_qemu_dst}"
 }
 
 # provision_interactive - Run interactive provisioning
@@ -286,7 +296,7 @@ function provision_script() {
 
 # parse_args *args - Parse command line arguments
 function parse_args() {
-    options=$(getopt -o r:s:ih --long resize:,script:,interactive,version,help -- "$@")
+    options=$(getopt -o r:s:ih --long resize:,script:,interactive,qemu:,version,help -- "$@")
     if [[ $? != 0 ]]; then
         exit_with_usage
     fi
@@ -294,9 +304,10 @@ function parse_args() {
 
     while true; do
         case "$1" in
-            -r | --resize)      opt_resize=$2; shift 2;;
-            -s | --script)      opt_script=$(realpath "$2"); shift 2;;
-            -i | --interactive) opt_interactive=true; shift;;
+            -r | --resize)      readonly opt_resize=$2; shift 2;;
+            -s | --script)      readonly opt_script=$(realpath "$2"); shift 2;;
+            -i | --interactive) readonly opt_interactive=true; shift;;
+            --qemu)             readonly opt_qemu_src=$2; shift 2;;
             -h | --help)        exit_with_usage; break;;
             --version)          exit_with_version; break;;
             --)                 shift; break;;
@@ -310,11 +321,11 @@ function parse_args() {
     fi
 
     if [[ $# -eq 1 ]]; then
-        opt_disk_image=$(realpath "$1");
+        readonly opt_disk_image=$(realpath "$1");
     elif [[ $# -eq 2 ]]; then
         log "INFO" "Copying disk image file $1 to $2"
         cp "$1" "$2"
-        opt_disk_image=$(realpath "$2");
+        readonly opt_disk_image=$(realpath "$2");
     else
         exit_with_usage
     fi
