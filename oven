@@ -305,7 +305,7 @@ function parse_args() {
     while true; do
         case "$1" in
             -r | --resize)      readonly opt_resize=$2; shift 2;;
-            -s | --script)      readonly opt_script=$(realpath "$2"); shift 2;;
+            -s | --script)      readonly opt_script=$(pwd)/"$2"; shift 2;;
             -i | --interactive) readonly opt_interactive=true; shift;;
             --partnum)          readonly opt_root_part_num=$2; shift 2;;
             --qemu)             readonly opt_qemu_src=$2; shift 2;;
@@ -327,11 +327,11 @@ function parse_args() {
     fi
 
     if [[ $# -eq 1 ]]; then
-        readonly opt_disk_image=$(realpath "$1");
+        readonly opt_disk_image=$(pwd)/"$1";
     elif [[ $# -eq 2 ]]; then
         log "INFO" "Copying disk image file $1 to $2"
         cp "$1" "$2"
-        readonly opt_disk_image=$(realpath "$2");
+        readonly opt_disk_image=$(pwd)/"$2";
     else
         exit_with_usage
     fi
