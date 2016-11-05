@@ -6,8 +6,9 @@ Automated provisioning of RaspberryPi disk images on x86_64
 
 ## Prerequisites
 
-- CentOS 7 or Fedora 24+ (might work on other Linux distros as well)
+- CentOS 7, Fedora 24, or Ubuntu 14.04 (might work on other Linux distros as well)
 - Statically linked QEMU user mode emulator for ARM binaries
+- parted and kpartx
 
 ## Installation
 
