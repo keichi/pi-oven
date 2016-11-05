@@ -139,7 +139,7 @@ function resize_image() {
     fallocate -l "$size_b" "$image"
 
     log "INFO" "Extending root partition"
-    if ! parted -h | grep resizepart; then
+    if ! parted -h | grep resizepart > /dev/null; then
         log "WARN" "parted does not support resizepart subcommand"
         log "WARN" "Falling back to rm and mkpart"
 
