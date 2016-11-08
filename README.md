@@ -53,7 +53,8 @@ Available options:
 - -r, --resize [size in MB]: Resize base image before provisioning
 - -s, --script [path to shell script]: Shell script for provisioning
 - -i, --interactive: Interactive mode
-- --partnum [1-4]: Partition number of the root partition
+- --bootpart [1-4]: Partition number of the boot partition (default=1)
+- --rootpart [1-4]: Partition number of the root partition (default=2)
 - --qemu [path to qemu]: Path to qemu-arm-static
 - --version: Print version information
 - -h, --help: Show usage
