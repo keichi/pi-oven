@@ -43,6 +43,8 @@ opt_qemu_src=
 readonly opt_qemu_dst=/usr/bin/qemu-arm-static
 # Path to loop mount the disk image
 readonly opt_mount_point=/mnt/oven
+# Partition number of the boot partition
+opt_boot_part_num=1
 # Partition number of the root partition
 opt_root_part_num=2
 
@@ -53,10 +55,11 @@ Usage: ${PROGNAME} [options] src [dst]
   ${PROGNAME}: Provision and bake RaspberryPi disk image
 
   Options:
-  -r, --resize SIZE    Resize base image before provisioning
+  -r, --resize SIZE    Resize root filesystem before provisioning
   -s, --script PATH    Shell script for provisioning
   -i, --interactive    Interactive mode
-  --partnum [1-4]      Partition number of the root partition
+  --bootpart [1-4]     Partition number of the boot partition (default=1)
+  --rootpart [1-4]     Partition number of the root partition (default=2)
   --qemu PATH          Path to qemu-arm-static
   --version            Print version information
   -h, --help           Show usage
@@ -127,8 +130,8 @@ function check_deps() {
     fi
 }
 
-# resize_image size image - Resize disk image
-function resize_image() {
+# resize_root size image - Resize root partition
+function resize_root() {
     local size_mb=$1
     local size_b=$((size_mb * 1000 * 1000))
     local image=$2
@@ -174,30 +177,43 @@ function mount_image() {
     local kx_out
     # Make sure device mappers are deleted
     kpartx -dsv "$image" > /dev/null
-    kx_out=$(kpartx -asv "$image" | sed -n ${opt_root_part_num}p)
+    kx_out=$(kpartx -asv "$image")
 
     # Extract device mapper path
     local regex="^add map ([[:alnum:]]+)"
-    if [[ $kx_out =~ $regex ]]; then
-        local device_mapper=/dev/mapper/${BASH_REMATCH[1]}
+    if [[ $(echo "$kx_out" | sed -n ${opt_boot_part_num}p) =~ $regex ]]; then
+        local dm_boot=/dev/mapper/${BASH_REMATCH[1]}
     else
-        log "ERROR" "Could not find device mapper"
+        log "ERROR" "Could not find device mapper for boot partition"
+        exit 1
+    fi
+    if [[ $(echo "$kx_out" | sed -n ${opt_root_part_num}p) =~ $regex ]]; then
+        local dm_root=/dev/mapper/${BASH_REMATCH[1]}
+    else
+        log "ERROR" "Could not find device mapper for root partition"
         exit 1
     fi
 
-    # Resize filesystem if needed
-    e2fsck -fy "$device_mapper" &> /dev/null
-    resize2fs "$device_mapper" &> /dev/null
+    # Resize root filesystem if needed
+    e2fsck -fy "$dm_root" &> /dev/null
+    resize2fs "$dm_root" &> /dev/null
 
     # Make sure mount point exists
     if ! [[ -d $opt_mount_point  ]]; then
         mkdir -p "$opt_mount_point"
     fi
 
-    # Loop mount partition
-    log "INFO" "Mouting ${device_mapper} to ${opt_mount_point}"
-    if ! mount "$device_mapper" "$opt_mount_point" &> /dev/null; then
-        log "ERROR" "Failed to mount ${device_mapper}"
+    # Loop mount root partition
+    log "INFO" "Mouting ${dm_root} to ${opt_mount_point}"
+    if ! mount "$dm_root" "$opt_mount_point" &> /dev/null; then
+        log "ERROR" "Failed to mount ${dm_root}"
+        exit 1
+    fi
+
+    # Loop mount boot partition
+    log "INFO" "Mouting ${dm_boot} to ${opt_mount_point}/boot"
+    if ! mount "$dm_boot" "$opt_mount_point/boot" &> /dev/null; then
+        log "ERROR" "Failed to mount ${dm_boot}"
         exit 1
     fi
 
@@ -221,6 +237,9 @@ function umount_image() {
     umount "${opt_mount_point}/dev"
     umount "${opt_mount_point}/sys"
     umount "${opt_mount_point}/proc"
+
+    log "INFO" "Unmounting ${opt_mount_point}/boot"
+    umount "$opt_mount_point/boot"
 
     log "INFO" "Unmounting ${opt_mount_point}"
     umount "$opt_mount_point"
@@ -296,7 +315,7 @@ function provision_script() {
 
 # parse_args *args - Parse command line arguments
 function parse_args() {
-    options=$(getopt -o r:s:ih --long resize:,script:,interactive,partnum:,qemu:,version,help -- "$@")
+    options=$(getopt -o r:s:ih --long resize:,script:,interactive,rootpart:,bootpart:,qemu:,version,help -- "$@")
     if [[ $? != 0 ]]; then
         exit_with_usage
     fi
@@ -307,7 +326,8 @@ function parse_args() {
             -r | --resize)      readonly opt_resize=$2; shift 2;;
             -s | --script)      readonly opt_script=$(pwd)/"$2"; shift 2;;
             -i | --interactive) readonly opt_interactive=true; shift;;
-            --partnum)          readonly opt_root_part_num=$2; shift 2;;
+            --bootpart)         readonly opt_boot_part_num=$2; shift 2;;
+            --rootpart)         readonly opt_root_part_num=$2; shift 2;;
             --qemu)             readonly opt_qemu_src=$2; shift 2;;
             -h | --help)        exit_with_usage; break;;
             --version)          exit_with_version; break;;
@@ -321,8 +341,13 @@ function parse_args() {
         exit_with_usage
     fi
 
+    if (( opt_boot_part_num < 1 )) || (( opt_boot_part_num > 4 )); then
+        log "ERROR" "--bootpart must be a number between 1 to 4"
+        exit_with_usage
+    fi
+
     if (( opt_root_part_num < 1 )) || (( opt_root_part_num > 4 )); then
-        log "ERROR" "--partnum must be a number between 1 to 4"
+        log "ERROR" "--rootpart must be a number between 1 to 4"
         exit_with_usage
     fi
 
@@ -348,7 +373,7 @@ function main() {
     check_image "$opt_disk_image"
 
     if [[ $opt_resize != "" ]]; then
-        resize_image "$opt_resize" "$opt_disk_image"
+        resize_root "$opt_resize" "$opt_disk_image"
     fi
 
     mount_image "$opt_disk_image"
