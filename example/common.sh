@@ -25,6 +25,27 @@ make -j 4
 make install
 popd
 rm -rf Python-3.5.2
+PATH=$PATH:/usr/local/bin
+
+# Install RTMIULib
+git clone https://github.com/RPi-Distro/RTIMULib.git
+pushd RTIMULib/Linux/python || exit 1
+python3 setup.py build
+python3 setup.py install
+popd
+rm -rf RTIMULib
+
+# Install SenseHat
+apt-get -y install libjpeg-dev i2c-tools
+pip3 install --upgrade pip
+pip3 install sense-hat
+
+# Enable SenseHat Device Tree Overlay
+echo 'dtoverlay=rpi-sense' >> /boot/config.txt
+
+# Enable I2C
+echo 'i2c-dev' >> /etc/modules
+echo 'dtparam=i2c_arm=on' >> /boot/config.txt
 
 # Clean apt cache
 apt-get clean
