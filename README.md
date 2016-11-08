@@ -37,7 +37,7 @@ $ install qemu-arm-static /usr/bin
 
 ## Usage
 
-Oven is an automation tool for modifying existing RaspberryPi disk images to
+_Oven_ is a simple yet flexible tool for customizing RaspberryPi disk images to
 match your needs.
 
 ```
