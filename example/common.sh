@@ -10,6 +10,12 @@ cp /usr/share/zoneinfo/Asia/Tokyo /etc/localtime
 echo "exit 101" > /usr/sbin/policy-rc.d
 chmod +x /usr/sbin/policy-rc.d
 
+# Upgrade packages
+apt-get -y purge apt-listchanges
+apt-get -y update
+apt-get -y upgrade
+apt-get -y install git tmux vim ssh
+
 rm /usr/sbin/policy-rc.d
 
 # Enable sshd
