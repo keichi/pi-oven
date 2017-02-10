@@ -1,16 +1,16 @@
 #!/bin/bash
 
-# Install packages
-apt-get -y update
-apt-get -y upgrade
-apt-get -y install git tmux vim
-
 # Change locale to ja_JP and timezone to Asia/Tokyo
 sed -i -e '/en_GB.UTF-8/d' /etc/locale.gen
 echo 'ja_JP.UTF8 UTF-8' >> /etc/locale.gen
 locale-gen
 update-locale LANG=ja_JP.UTF-8
 cp /usr/share/zoneinfo/Asia/Tokyo /etc/localtime
+
+echo "exit 101" > /usr/sbin/policy-rc.d
+chmod +x /usr/sbin/policy-rc.d
+
+rm /usr/sbin/policy-rc.d
 
 # Enable sshd
 systemctl enable ssh
