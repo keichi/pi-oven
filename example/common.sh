@@ -41,11 +41,16 @@ pip3 install --upgrade pip
 pip3 install sense-hat
 
 # Enable SenseHat Device Tree Overlay
-echo 'dtoverlay=rpi-sense' >> /boot/config.txt
+# echo 'dtoverlay=rpi-sense' >> /boot/config.txt
 
 # Enable I2C
-echo 'i2c-dev' >> /etc/modules
-echo 'dtparam=i2c_arm=on' >> /boot/config.txt
+# echo 'i2c-dev' >> /etc/modules
+# echo 'dtparam=i2c_arm=on' >> /boot/config.txt
+
+# Enable Pi camera
+# pip3 install picamera
+# echo 'start_x=1' >> /boot/config.txt
+# echo 'gpu_mem=128' >> /boot/config.txt
 
 # Clean apt cache
 apt-get clean
