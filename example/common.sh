@@ -28,7 +28,7 @@ rm -rf Python-3.5.2
 PATH=$PATH:/usr/local/bin
 
 # Install RTMIULib
-git clone https://github.com/RPi-Distro/RTIMULib.git
+git clone --depth 1 https://github.com/RPi-Distro/RTIMULib.git
 pushd RTIMULib/Linux/python || exit 1
 python3 setup.py build
 python3 setup.py install
