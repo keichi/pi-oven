@@ -12,6 +12,9 @@ locale-gen
 update-locale LANG=ja_JP.UTF-8
 cp /usr/share/zoneinfo/Asia/Tokyo /etc/localtime
 
+# Enable sshd
+systemctl enable ssh
+
 # Install dependencies for building python
 apt-get -y install build-essential zlib1g-dev libbz2-dev libssl-dev \
 libreadline-dev libncurses5-dev libsqlite3-dev libgdbm-dev libdb-dev \
