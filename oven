@@ -265,6 +265,7 @@ function prepare_chroot() {
 
     cp "$opt_qemu_src" "${opt_mount_point}/${opt_qemu_dst}"
     if ! ls /proc/sys/fs/binfmt_misc/qemu-arm &> /dev/null ; then
+        mount binfmt_misc -t binfmt_misc /proc/sys/fs/binfmt_misc  
         log "INFO" "Installing binfmt configuration for ARM binaries"
         echo -e "$arm_binfmt" > /proc/sys/fs/binfmt_misc/register
     fi
