@@ -223,9 +223,12 @@ function mount_image() {
     mount --bind /sys "${opt_mount_point}/sys"
     mount -t proc none "${opt_mount_point}/proc"
     
-    # Mount binfmt_misc seems to be needed for ubuntu 16.04+ at least
-    log "INFO" "Mouting binfmt_misc"
-    mount binfmt_misc -t binfmt_misc /proc/sys/fs/binfmt_misc  
+    if [ ! -e /proc/sys/fs/binfmt_misc/register ]; then
+        # Mount binfmt_misc seems to be needed for ubuntu 16.04+ at least    
+        log "INFO" "Mouting binfmt_misc"
+        mount binfmt_misc -t binfmt_misc /proc/sys/fs/binfmt_misc    
+    fi
+    
 }
 
 # umount_image image - Unmount disk image
@@ -271,7 +274,7 @@ function prepare_chroot() {
     arm_binfmt+='/usr/bin/qemu-arm-static:'
 
     cp "$opt_qemu_src" "${opt_mount_point}/${opt_qemu_dst}"
-    if ! ls /proc/sys/fs/binfmt_misc/qemu-arm &> /dev/null ; then       
+    if ! ls /proc/sys/fs/binfmt_misc/qemu-arm &> /dev/null ; then
         log "INFO" "Installing binfmt configuration for ARM binaries"
         echo -e "$arm_binfmt" > /proc/sys/fs/binfmt_misc/register
     fi
