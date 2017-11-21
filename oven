@@ -222,6 +222,13 @@ function mount_image() {
     mount --bind /dev "${opt_mount_point}/dev"
     mount --bind /sys "${opt_mount_point}/sys"
     mount -t proc none "${opt_mount_point}/proc"
+    
+    if [ ! -e /proc/sys/fs/binfmt_misc/register ]; then
+        # Mount binfmt_misc seems to be needed for ubuntu 16.04+ at least    
+        log "INFO" "Mouting binfmt_misc"
+        mount binfmt_misc -t binfmt_misc /proc/sys/fs/binfmt_misc    
+    fi
+    
 }
 
 # umount_image image - Unmount disk image
@@ -246,6 +253,9 @@ function umount_image() {
 
     log "INFO" "Deleting device mapper for ${image}"
     kpartx -dsv "$image" > /dev/null
+    
+    log "INFO" "Unmounting binfmt_misc"
+    umount binfmt_misc
 }
 
 # check_privileges - Check if we have root privilege
