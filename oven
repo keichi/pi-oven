@@ -53,8 +53,8 @@ Usage: ${PROGNAME} [options] src [dst]
 
   Options:
   -r, --resize SIZE    Resize the root file system before customization
-  -s, --script PATH    Shell script for customization
-  -i, --interactive    Interactive mode
+  -s, --script PATH    Path to a shell script for customization
+  -i, --interactive    Start an interactive shell for customization
   --bootpart [1-4]     Partition number of the boot partition (default=1)
   --rootpart [1-4]     Partition number of the root partition (default=2)
   --version            Print version information
