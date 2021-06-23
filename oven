@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright (c) 2016 Keichi Takahashi <keichi.t@me.com>
+# Copyright (c) 2016-2021 Keichi Takahashi <keichi.t@me.com>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -23,7 +23,7 @@
 set -u
 
 # Meta information
-readonly VERSION=0.0.0
+readonly VERSION=1.0.0
 readonly PROGNAME=$(basename "$0")
 
 # Some ANSI color codes
@@ -38,9 +38,6 @@ opt_resize=
 opt_disk_image=
 opt_script=
 opt_interactive=false
-opt_qemu_src=
-# Where to put qemu-arm inside the RasPi image
-readonly opt_qemu_dst=/usr/bin/qemu-arm-static
 # Path to loop mount the disk image
 readonly opt_mount_point=/mnt/oven
 # Partition number of the boot partition
@@ -52,15 +49,14 @@ opt_root_part_num=2
 function exit_with_usage() {
     cat << EOS >&2
 Usage: ${PROGNAME} [options] src [dst]
-  ${PROGNAME}: Provision and bake RaspberryPi disk image
+  ${PROGNAME}: Customize RaspberryPi disk images
 
   Options:
-  -r, --resize SIZE    Resize root filesystem before provisioning
-  -s, --script PATH    Shell script for provisioning
+  -r, --resize SIZE    Resize the root file system before customization
+  -s, --script PATH    Shell script for customization
   -i, --interactive    Interactive mode
   --bootpart [1-4]     Partition number of the boot partition (default=1)
   --rootpart [1-4]     Partition number of the root partition (default=2)
-  --qemu PATH          Path to qemu-arm-static
   --version            Print version information
   -h, --help           Show usage
 EOS
@@ -107,21 +103,6 @@ function check_deps() {
             failed=true
         fi
     done
-
-    # Path to static build of qemu-arm
-    if [[ $opt_qemu_src != ""  ]]; then
-        if ! [[ -x $opt_qemu_src ]]; then
-            log "ERROR" "${opt_qemu_src} is not executable"
-            failed=true
-        fi
-    else
-        if type qemu-arm-static &> /dev/null; then
-            readonly opt_qemu_src=$(which qemu-arm-static)
-        else
-            log "ERROR" "qemu-arm-static is missing"
-            failed=true
-        fi
-    fi
 
     # Some dependencies are missing
     if $failed; then
@@ -204,31 +185,24 @@ function mount_image() {
     fi
 
     # Loop mount root partition
-    log "INFO" "Mouting ${dm_root} to ${opt_mount_point}"
+    log "INFO" "Mounting ${dm_root} to ${opt_mount_point}"
     if ! mount "$dm_root" "$opt_mount_point" &> /dev/null; then
         log "ERROR" "Failed to mount ${dm_root}"
         exit 1
     fi
 
     # Loop mount boot partition
-    log "INFO" "Mouting ${dm_boot} to ${opt_mount_point}/boot"
+    log "INFO" "Mounting ${dm_boot} to ${opt_mount_point}/boot"
     if ! mount "$dm_boot" "$opt_mount_point/boot" &> /dev/null; then
         log "ERROR" "Failed to mount ${dm_boot}"
         exit 1
     fi
 
     # Mount devfs, sysfs and procfs
-    log "INFO" "Mouting devfs, sysfs and procfs"
+    log "INFO" "Mounting devfs, sysfs and procfs"
     mount --bind /dev "${opt_mount_point}/dev"
     mount --bind /sys "${opt_mount_point}/sys"
     mount -t proc none "${opt_mount_point}/proc"
-    
-    if [ ! -e /proc/sys/fs/binfmt_misc/register ]; then
-        # Mount binfmt_misc seems to be needed for ubuntu 16.04+ at least    
-        log "INFO" "Mouting binfmt_misc"
-        mount binfmt_misc -t binfmt_misc /proc/sys/fs/binfmt_misc    
-    fi
-    
 }
 
 # umount_image image - Unmount disk image
@@ -253,9 +227,6 @@ function umount_image() {
 
     log "INFO" "Deleting device mapper for ${image}"
     kpartx -dsv "$image" > /dev/null
-    
-    log "INFO" "Unmounting binfmt_misc"
-    umount binfmt_misc
 }
 
 # check_privileges - Check if we have root privilege
@@ -268,26 +239,12 @@ function check_privileges() {
 
 # prepare_chroot - Preparation before running chroot
 function prepare_chroot() {
-    local arm_binfmt=':qemu-arm:M::\x7fELF\x01\x01\x01\x00\x00\x00\x00\x00'
-    arm_binfmt+='\x00\x00\x00\x00\x02\x00\x28\x00:\xff\xff\xff\xff\xff\xff'
-    arm_binfmt+='\xff\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff:'
-    arm_binfmt+='/usr/bin/qemu-arm-static:'
-
-    cp "$opt_qemu_src" "${opt_mount_point}/${opt_qemu_dst}"
-    if ! ls /proc/sys/fs/binfmt_misc/qemu-arm &> /dev/null ; then
-        log "INFO" "Installing binfmt configuration for ARM binaries"
-        echo -e "$arm_binfmt" > /proc/sys/fs/binfmt_misc/register
-    fi
-
-    log "INFO" "Using qemu-arm-static in ${opt_qemu_src}"
-
-    chroot $opt_mount_point /bin/sed -i -e 's/^#*/#/' /etc/ld.so.preload
+    log "INFO" "Preparing chroot environment"
 }
 
 # cleanup_chroot - Cleanup after running chroot
 function cleanup_chroot() {
-    chroot $opt_mount_point /bin/sed -i -e 's/^#*//' /etc/ld.so.preload
-    rm -f "${opt_mount_point}/${opt_qemu_dst}"
+    log "INFO" "Cleaning up chroot environment"
 }
 
 # provision_interactive - Run interactive provisioning
@@ -325,7 +282,7 @@ function provision_script() {
 
 # parse_args *args - Parse command line arguments
 function parse_args() {
-    options=$(getopt -o r:s:ih --long resize:,script:,interactive,rootpart:,bootpart:,qemu:,version,help -- "$@")
+    options=$(getopt -o r:s:ih --long resize:,script:,interactive,rootpart:,bootpart:,version,help -- "$@")
     if [[ $? != 0 ]]; then
         exit_with_usage
     fi
@@ -338,7 +295,6 @@ function parse_args() {
             -i | --interactive) readonly opt_interactive=true; shift;;
             --bootpart)         readonly opt_boot_part_num=$2; shift 2;;
             --rootpart)         readonly opt_root_part_num=$2; shift 2;;
-            --qemu)             readonly opt_qemu_src=$2; shift 2;;
             -h | --help)        exit_with_usage; break;;
             --version)          exit_with_version; break;;
             --)                 shift; break;;
